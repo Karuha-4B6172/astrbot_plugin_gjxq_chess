@@ -1,0 +1,16 @@
+name: astrbot_plugin_gjxq_chess # AstrBot 唯一识别名，需与插件目录名一致
+display_name: 国际象棋联机 # 插件展示名
+help: |
+  在 https://game.hullqin.cn/gjxq/<房间号> 创建/加入国际象棋房间，在聊天里看棋盘、走棋、
+  用近似 Elo 难度与 AI 对弈，支持同会话多开与合并推送。发送 /象棋 帮助 查看全部指令。
+short_desc: 在 HullQin 游戏大厅创建/加入国际象棋房间，聊天看棋盘、走棋与 Elo 难度 AI 对战，支持多开
+desc: 在 game.hullqin.cn 的 gjxq 房间中创建或加入国际象棋对局，支持文本棋盘、聊天走棋、自动 AI 对手、胜负通知、同会话多开房间与合并推送
+version: v1.3.1
+repo: "https://github.com/your-name/astrbot_plugin_gjxq_chess" # 改成你的 GitHub 仓库地址
+logo: logo.png # 插件图标（插件市场使用）
+author: dsh
+support_platforms:
+  - aiocqhttp
+  - telegram
+  - discord
+astrbot_version: ">=4.0.0"

@@ -1,0 +1,68 @@
+{
+  "ai_enabled": {
+    "description": "自动 AI 走棋",
+    "type": "bool",
+    "hint": "开启后机器人轮到自己走棋时会用 python-chess 自动走棋；关闭后需在聊天中发送 /象棋 走 <走法>。",
+    "default": true
+  },
+  "ai_elo": {
+    "description": "AI 难度（近似 Elo）",
+    "type": "int",
+    "hint": "用近似 Elo 分表示 AI 难度，范围 600-2400；0 表示关闭 Elo 模式（改用 ai_depth/ai_time_limit）。推荐档位：600 入门、800 简单、1000 普通、1200 进阶、1600 较难、2000 困难、2400 最强。",
+    "default": 0
+  },
+  "ai_depth": {
+    "description": "AI 搜索深度（自定义模式）",
+    "type": "int",
+    "hint": "迭代加深的最大深度，范围 1-6；越大越强但越慢（默认 3）。仅当 ai_elo=0 时使用。",
+    "default": 3
+  },
+  "ai_time_limit": {
+    "description": "AI 思考时间上限（秒）",
+    "type": "float",
+    "hint": "单步思考的最长秒数，超时后返回当前最优走法（默认 2.0）。Elo 模式会给出档位时间，并在超过该值时以此为上界。",
+    "default": 2.0
+  },
+  "auto_start": {
+    "description": "自动开始对局",
+    "type": "bool",
+    "hint": "机器人是房主且双方都入座后，自动开始对局；关闭后需发送 /象棋 开始。",
+    "default": true
+  },
+  "move_delay": {
+    "description": "AI 走棋延迟（秒）",
+    "type": "float",
+    "hint": "轮到自己时等待多久再让 AI 走棋，避免对话框刷得太快（默认 0.8）。",
+    "default": 0.8
+  },
+  "emoji": {
+    "description": "入座表情",
+    "type": "string",
+    "hint": "入座时展示的表情（匿名玩家建议保留非空，默认 😀）。",
+    "default": "😀"
+  },
+  "notify_opponent_move": {
+    "description": "主动推送走棋消息",
+    "type": "bool",
+    "hint": "是否主动推送对手/AI 的走棋消息；默认关闭，仅在 /象棋 棋盘、/象棋 状态 查看。开启后按 board_batch_plies 合并推送。",
+    "default": false
+  },
+  "board_push_enabled": {
+    "description": "推送时附带棋盘",
+    "type": "bool",
+    "hint": "是否在主动推送（走棋、开局、胜负）中附带文本棋盘；默认关闭，避免刷屏，棋盘用 /象棋 棋盘 查看。",
+    "default": false
+  },
+  "board_batch_plies": {
+    "description": "棋盘/走棋合并推送步数",
+    "type": "int",
+    "hint": "累计多少步（半回合）后再合并推送一次，防止刷屏；1 表示每步都推送（默认 4，范围 1-40）。",
+    "default": 4
+  },
+  "max_sessions": {
+    "description": "最大并发房间数",
+    "type": "int",
+    "hint": "机器人同时在多少个房间保持连接（支持同一个群多开房间，默认 5）。",
+    "default": 5
+  }
+}
