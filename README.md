@@ -12,9 +12,6 @@
 > 本插件是非官方第三方工具，与 hullqin 及其游戏站点无隶属关系。
 >
 > 当前版本：v1.3.1（更新内容见 [CHANGELOG.md](CHANGELOG.md)）。
->
-> 仓库：https://github.com/your-name/astrbot_plugin_gjxq_chess （发布前请把 `your-name` 换成你的 GitHub 用户名，
-> 并同步修改 `metadata.yaml` 的 `repo` 字段）。
 
 ## 功能
 
