@@ -1,6 +1,6 @@
 # 国际象棋联机（astrbot_plugin_gjxq_chess）
 
-![version](https://img.shields.io/badge/version-v1.3.2-blue)
+![version](https://img.shields.io/badge/version-v1.4.0-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -11,7 +11,7 @@
 >
 > 本插件是非官方第三方工具，与 hullqin 及其游戏站点无隶属关系。
 >
-> 当前版本：v1.3.2（更新内容见 [CHANGELOG.md](CHANGELOG.md)）。
+> 当前版本：v1.4.0（更新内容见 [CHANGELOG.md](CHANGELOG.md)）。
 >
 > 仓库：https://github.com/Karuha-4B6172/astrbot_plugin_gjxq_chess
 

@@ -81,7 +81,7 @@ except ImportError:  # pragma: no cover - top-level loading (tests / flattened l
     )
 
 PLUGIN_NAME = "astrbot_plugin_gjxq_chess"
-PLUGIN_VERSION = "1.3.2"
+PLUGIN_VERSION = "1.4.0"
 
 ROOM_URL_TEMPLATE = "https://game.hullqin.cn/gjxq/{room_id}"
 ROOM_ID_PATTERN = re.compile(r"^[a-z0-9]{3,8}$")
