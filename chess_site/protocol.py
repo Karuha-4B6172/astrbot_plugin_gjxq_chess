@@ -11,15 +11,13 @@ jar) is used for the HTTP bootstrap request and the websocket handshake.
 from __future__ import annotations
 
 import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 import aiohttp
 
 from . import proto
-
-LOGGER = logging.getLogger("astrbot_plugin_gjxq_chess.protocol")
+from .logs import SilentLog
 
 BASE_URL = "https://game.hullqin.cn"
 PAGE_PATH = "/gjxq/"
@@ -63,7 +61,7 @@ class RoomConnection:
         on_room: RoomCallback | None = None,
         on_event: EventCallback | None = None,
         on_close: Callable[["RoomConnection", int, str], Awaitable[None] | None] | None = None,
-        logger: logging.Logger | None = None,
+        logger: Any | None = None,
     ) -> None:
         self.room_id = room_id
         self.room: proto.Room = proto.Room(room_id=room_id)
@@ -74,7 +72,9 @@ class RoomConnection:
         self.on_room = on_room
         self.on_event = on_event
         self.on_close = on_close
-        self.logger = logger or LOGGER
+        # The AstrBot plugin injects ``astrbot.api.logger`` here (see main.py);
+        # the silent sink only serves standalone/test usage.
+        self.logger = logger or SilentLog()
         self._session: aiohttp.ClientSession | None = None
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._recv_task: asyncio.Task[None] | None = None
@@ -155,7 +155,7 @@ class RoomConnection:
         finally:
             self.on_room = original_on_room
         if self.on_room is not None:
-            await _call(self.on_room, self)
+            await _call(self.on_room, self, log=self.logger)
         return room
 
     async def close(self, code: int = proto.CLOSE_NORMAL, reason: str = "") -> None:
@@ -205,7 +205,7 @@ class RoomConnection:
             self.close_reason = getattr(ws, "close_reason", "") or ""
             self.closed.set()
             if self.on_close is not None:
-                await _call(self.on_close, self, self.close_code, self.close_reason)
+                await _call(self.on_close, self, self.close_code, self.close_reason, log=self.logger)
 
     async def _handle_frame(self, payload: bytes) -> None:
         self.last_frame_at = _now_ms()
@@ -248,11 +248,11 @@ class RoomConnection:
             if previous_state != room.state or previous_version != room.version:
                 self.logger.debug("房间状态变化 %s/%s -> %s/%s", previous_state, previous_version, room.state, room.version)
             if self.on_room is not None:
-                await _call(self.on_room, self)
+                await _call(self.on_room, self, log=self.logger)
         if frame.event is not None:
             await self._apply_event(frame.event)
             if self.on_event is not None:
-                await _call(self.on_event, self, frame.event)
+                await _call(self.on_event, self, frame.event, log=self.logger)
 
     async def _apply_event(self, event: proto.ServerEvent) -> None:
         """Merge a broadcast event into the cached room snapshot."""
@@ -359,17 +359,18 @@ class RoomConnection:
         )
 
 
-async def _call(callback: Callable[..., Any], *args: Any) -> None:
+async def _call(callback: Callable[..., Any], *args: Any, log: Any | None = None) -> None:
+    log = log or SilentLog()
     try:
         result = callback(*args)
     except Exception as exc:  # noqa: BLE001 - callbacks must not kill the loop
-        LOGGER.warning("房间回调异常：%s", exc)
+        log.warning("房间回调异常：%s", exc)
         return
     if asyncio.iscoroutine(result):
         try:
             await result
         except Exception as exc:  # noqa: BLE001
-            LOGGER.warning("房间异步回调异常：%s", exc)
+            log.warning("房间异步回调异常：%s", exc)
 
 
 def _now_ms() -> int:

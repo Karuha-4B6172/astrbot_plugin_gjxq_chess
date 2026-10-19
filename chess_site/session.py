@@ -13,15 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from . import ai, game, proto, protocol
-
-LOGGER = logging.getLogger("astrbot_plugin_gjxq_chess.session")
+from .logs import SilentLog
 
 ROOM_URL_TEMPLATE = "https://game.hullqin.cn/gjxq/{room_id}"
 
@@ -87,13 +85,15 @@ class RoomSession:
         notify: NotifyCallback,
         *,
         config: SessionConfig | None = None,
-        logger: logging.Logger | None = None,
+        logger: Any | None = None,
         room_created: bool = False,
     ) -> None:
         self.room_id = room_id
         self.notify = notify
         self.config = config or SessionConfig()
-        self.logger = logger or LOGGER
+        # ``main.py`` injects the AstrBot logger; the silent sink keeps the
+        # package usable without AstrBot (offline tests / local scripts).
+        self.logger = logger or SilentLog()
         self.created_room = room_created
         self._conn: protocol.RoomConnection | None = None
         self._view: game.View | None = None
@@ -217,6 +217,7 @@ class RoomSession:
             on_room=self._on_room,
             on_event=self._on_event,
             on_close=self._on_close,
+            logger=self.logger,
         )
         try:
             initial = await self._conn.connect()
@@ -422,6 +423,7 @@ class RoomSession:
                 on_room=self._on_room,
                 on_event=self._on_event,
                 on_close=self._on_close,
+                logger=self.logger,
             )
             self._conn = conn
             try:

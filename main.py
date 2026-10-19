@@ -42,7 +42,8 @@ from typing import Any, Optional
 _PLUGIN_DIR = Path(__file__).resolve().parent
 
 import astrbot.api.message_components as Comp  # noqa: E402
-from astrbot.api import AstrBotConfig, logger  # noqa: E402
+from astrbot.api import AstrBotConfig  # noqa: E402
+from astrbot.api import logger  # noqa: E402  (the only logger allowed in plugins)
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter  # noqa: E402
 from astrbot.api.star import Context, Star, register  # noqa: E402
 
@@ -80,7 +81,7 @@ except ImportError:  # pragma: no cover - top-level loading (tests / flattened l
     )
 
 PLUGIN_NAME = "astrbot_plugin_gjxq_chess"
-PLUGIN_VERSION = "1.3.1"
+PLUGIN_VERSION = "1.3.2"
 
 ROOM_URL_TEMPLATE = "https://game.hullqin.cn/gjxq/{room_id}"
 ROOM_ID_PATTERN = re.compile(r"^[a-z0-9]{3,8}$")
@@ -264,6 +265,7 @@ class GjxqChessPlugin(Star):
             notify,
             config=self._session_config(),
             room_created=room_created,
+            logger=logger,  # astrbot.api.logger: the only logger allowed in plugins
         )
         return session
 

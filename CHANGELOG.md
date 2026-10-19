@@ -1,5 +1,16 @@
 # 更新日志
 
+## v1.3.2 (2026-10-20)
+
+### 修复（安全审核反馈）
+- **日志规范**：移除 `chess_site/protocol.py`、`chess_site/session.py` 中对 Python 标准库
+  `logging` 的使用（`import logging` / `logging.getLogger`）。现在由 `main.py` 把
+  `astrbot.api.logger` 注入 `RoomSession`，再传递给 `RoomConnection`；插件内所有日志都经由
+  `astrbot.api.logger` 输出。`chess_site` 作为独立库/离线测试使用时改用无声 sink
+  （`chess_site/logs.py`，不依赖标准库 logging）。
+- 新增策略测试 `tests/test_logging_policy.py`，防止以后回退到标准库 logging。
+- `metadata.yaml` 的 `repo`/`author` 已更新为真实仓库信息；版本号提升到 v1.3.2。
+
 ## v1.3.1 (2026-10-19)
 
 ### 修复
