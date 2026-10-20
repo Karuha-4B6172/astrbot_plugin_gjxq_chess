@@ -152,6 +152,7 @@ python -m pytest tests -q
 - `tests/test_session.py`：房间会话状态机（离座/入座、结束游戏后重开、AI 调度回归）。
 - `tests/test_render.py`：文本棋盘/走棋列表渲染。
 - `tests/test_ai.py`：AI 走法合法性、一步杀、Elo 档位。
+- GitHub Actions 会在 Python 3.10 / 3.11 / 3.12 上运行全部测试（`.github/workflows/tests.yml`）。
 
 ## 注意事项与限制
 
@@ -182,6 +183,7 @@ astrbot_plugin_gjxq_chess/
   LICENSE
   logo.png           # 插件图标
   .gitignore / .gitattributes
+  .github/workflows/tests.yml # CI
   tests/             # 离线单元测试与黄金用例
   chess_site/        # 协议、棋局编解码、房间会话、AI 与文本渲染
 ```
