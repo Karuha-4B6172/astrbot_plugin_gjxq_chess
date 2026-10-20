@@ -153,13 +153,6 @@ python -m pytest tests -q
 - `tests/test_render.py`：文本棋盘/走棋列表渲染。
 - `tests/test_ai.py`：AI 走法合法性、一步杀、Elo 档位。
 
-## 发布到 AstrBot 插件市场
-
-1. 把本仓库推送到 GitHub（`repo` 字段填好后）；
-2. 打开 [AstrBot 插件市场](https://plugins.astrbot.app)，点击右下角 `+`，填写插件与仓库信息；
-3. 按提示到 [AstrBot_Plugins_Collection](https://github.com/AstrBotDevs/AstrBot_Plugins_Collection) 提交 Issue；
-4. 插件压缩包需小于 16MB（本仓库远小于该限制）。
-
 ## 注意事项与限制
 
 - **非官方插件**：站点协议由网页脚本逆向得到，hullqin 若改动字段或校验，插件可能暂时失效。
