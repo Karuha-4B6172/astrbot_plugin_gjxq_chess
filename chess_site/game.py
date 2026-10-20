@@ -60,6 +60,10 @@ __all__ = [
     "encode_records",
     "decode_records",
     "apply_move",
+    "advance_clock",
+    "clock_owner",
+    "undo_last",
+    "reject_undo",
     "is_white_turn",
     "is_playing",
     "is_finished",
@@ -99,6 +103,9 @@ POS_CAPTURED = 127
 POS_UNMOVED_SENTINEL = 126
 
 _CT_COST_MAX = 4095
+
+# Site clamps the clock timestamp to 20 bits of seconds.
+_CT_TIME_MAX = 1048575
 
 # Fixed piece ids -> type and initial square (site module 8234, list ``s``/``l``).
 _INITIAL_POSITIONS: Tuple[int, ...] = (
@@ -1193,6 +1200,124 @@ def apply_move(
         pt_owner=view.pt_owner,
     )
     return new_view, None
+
+
+# ---------------------------------------------------------------------------
+# chess clock helpers (site module 1990 ``wn`` / engine ``gO``) and undo
+# ---------------------------------------------------------------------------
+
+
+def clock_owner(view: View) -> Optional[int]:
+    """Return the player index whose clock is running, or ``None``.
+
+    Mirrors the site's engine helper ``z``: finished games and games without the
+    clock have no owner; a pending undo request keeps the requester as owner.
+
+    Args:
+        view: Current game snapshot.
+
+    Returns:
+        ``0`` (white), ``1`` (black) or ``None``.
+    """
+    if not view.enable_ct:
+        return None
+    if is_finished(view):
+        return None
+    if view.state == STATE_WHITE_REQ_BACK:
+        return view.white_id
+    if view.state == STATE_BLACK_REQ_BACK:
+        return 1 - view.white_id
+    return view.white_id if is_white_turn(view) else 1 - view.white_id
+
+
+def advance_clock(view: View, game_time_ms: int, next_owner: Optional[int] = None) -> View:
+    """Advance the optional chess clock, mirroring the site's ``wn``/``gO``.
+
+    The elapsed time since the previous snapshot is added to the previous
+    player's cost, then the clock is handed to ``next_owner`` (defaults to the
+    player to move in ``view``; ``None`` for a finished game).
+
+    Args:
+        view: New snapshot (after the operation).
+        game_time_ms: Game time of the *previous* snapshot in milliseconds.
+        next_owner: Player index taking over the clock, or ``None``.
+
+    Returns:
+        A view with updated ``costs`` / ``pt`` / ``pt_owner`` (same object when
+        the clock is disabled).
+    """
+    if not view.enable_ct:
+        return view
+    try:
+        seconds = int(game_time_ms) // 1000
+    except (TypeError, ValueError):
+        seconds = 0
+    seconds = max(0, min(seconds, _CT_TIME_MAX))
+    costs = [int(cost) for cost in (view.costs or [0, 0])] or [0, 0]
+    owner = view.pt_owner
+    if isinstance(owner, int) and 0 <= owner < len(costs):
+        elapsed = max(0, seconds - int(view.pt or 0))
+        costs[owner] = min(_CT_COST_MAX, costs[owner] + elapsed)
+    if next_owner is None:
+        next_owner = clock_owner(view)
+    return View(
+        white_id=view.white_id,
+        state=view.state,
+        pieces=list(view.pieces),
+        records=list(view.records),
+        back_piece_id=view.back_piece_id,
+        back_piece_before=view.back_piece_before,
+        enable_ct=True,
+        costs=costs,
+        pt=seconds,
+        pt_owner=next_owner,
+    )
+
+
+def undo_last(view: View) -> Optional[View]:
+    """Undo the newest record (site engine ``C``), or ``None`` when empty.
+
+    The returned view keeps the clock fields untouched; callers publish it via
+    :func:`advance_clock` exactly like the site's operation pipeline does.
+    """
+    if not view.records:
+        return None
+    rec = view.records[0]
+    pieces, is_white = _undo((list(view.pieces), is_white_turn(view)), rec)
+    return View(
+        white_id=view.white_id,
+        state=STATE_WAIT_WHITE if is_white else STATE_WAIT_BLACK,
+        pieces=pieces,
+        records=list(view.records[1:]),
+        back_piece_id=rec.id,
+        back_piece_before=rec.after,
+        enable_ct=view.enable_ct,
+        costs=list(view.costs),
+        pt=view.pt,
+        pt_owner=view.pt_owner,
+    )
+
+
+def reject_undo(view: View) -> Optional[View]:
+    """Reject a pending undo request (site engine ``$q``); returns the restored view."""
+    if view.state == STATE_WHITE_REQ_BACK:
+        new_state = STATE_WAIT_BLACK
+    elif view.state == STATE_BLACK_REQ_BACK:
+        new_state = STATE_WAIT_WHITE
+    else:
+        return None
+    return View(
+        white_id=view.white_id,
+        state=new_state,
+        pieces=list(view.pieces),
+        records=list(view.records),
+        back_piece_id=view.back_piece_id,
+        back_piece_before=view.back_piece_before,
+        enable_ct=view.enable_ct,
+        costs=list(view.costs),
+        pt=view.pt,
+        pt_owner=view.pt_owner,
+    )
 
 
 # ---------------------------------------------------------------------------

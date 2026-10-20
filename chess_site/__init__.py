@@ -1,4 +1,4 @@
 """Implementation package for the HullQin gjxq (国际象棋) AstrBot plugin."""
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 

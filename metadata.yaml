@@ -5,7 +5,7 @@ help: |
   用近似 Elo 难度与 AI 对弈，支持同会话多开与合并推送。发送 /象棋 帮助 查看全部指令。
 short_desc: 在 HullQin 游戏大厅创建/加入国际象棋房间，聊天看棋盘、走棋与 Elo 难度 AI 对战，支持多开
 desc: 在 game.hullqin.cn 的 gjxq 房间中创建或加入国际象棋对局，支持文本棋盘、聊天走棋、自动 AI 对手、胜负通知、同会话多开房间与合并推送
-version: v1.4.0
+version: v1.5.0
 repo: "https://github.com/Karuha-4B6172/astrbot_plugin_gjxq_chess"
 logo: logo.png # 插件图标（插件市场使用）
 author: DeepSeek & Karuha

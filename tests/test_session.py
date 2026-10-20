@@ -380,3 +380,140 @@ def test_maybe_schedule_ai_schedules_new_game_after_restart():
     import contextlib
 
     asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# timer / undo / result message regressions
+# ---------------------------------------------------------------------------
+
+
+class _SessionConn:
+    def __init__(self, room):
+        self.room = room
+        self.sent = []
+
+    @property
+    def is_connected(self):
+        return True
+
+    async def update_game_data(self, version, data):
+        self.sent.append((version, data))
+        self.room.game_version = version + 1
+        return True
+
+
+def _playing_room(*, position=1, game_version=3, game_time=20_000, owner=1):
+    room = session.proto.Room(
+        room_id="abc123",
+        state=1,
+        position=position,
+        owner=owner,
+        game_version=game_version,
+        game_time=game_time,
+    )
+    room.player_list = [
+        session.proto.PlayerInfo(emoji=b"x"),
+        session.proto.PlayerInfo(emoji=b"y"),
+    ]
+    return room
+
+
+def test_bot_move_advances_clock():
+    view = game.initial_view(enable_ct=True)
+    view = game.View(
+        white_id=view.white_id,
+        state=view.state,
+        pieces=list(view.pieces),
+        records=list(view.records),
+        enable_ct=True,
+        costs=[10, 5],
+        pt=15,
+        pt_owner=0,
+    )
+    session_obj = session.RoomSession("abc123", lambda kind, text: None)
+    session_obj._conn = _SessionConn(_playing_room(game_time=20_000))
+    session_obj._view = view
+    session_obj._view_key = (3, 20_000, 1)
+    session_obj._room_state = 1
+    ok, message = asyncio.run(session_obj.play_uci("e2e4"))
+    assert ok, message
+    version, data = session_obj._conn.sent[-1]
+    decoded = game.decode_game_data(data)
+    assert decoded.enable_ct is True
+    assert decoded.pt == 20  # floor(room game time / 1000)
+    assert decoded.pt_owner == 1  # black to move now
+    assert decoded.costs[0] == 15  # white cost grew by the 5 s since pt
+
+
+def _undo_request_view():
+    view = game.initial_view(enable_ct=True)
+    first, error = game.apply_move(view, 11, game.square_to_pos("e4"))
+    assert error is None and first is not None
+    first = game.advance_clock(first, 5_000)
+    return first
+
+
+def _run_undo(accept: bool, *, my_position: int):
+    request = game.View(
+        white_id=0,
+        state=game.STATE_WHITE_REQ_BACK,
+        pieces=list(_undo_request_view().pieces),
+        records=list(_undo_request_view().records),
+        enable_ct=True,
+        costs=list(_undo_request_view().costs),
+        pt=_undo_request_view().pt,
+        pt_owner=_undo_request_view().pt_owner,
+    )
+    notes = []
+    session_obj = session.RoomSession(
+        "abc123",
+        lambda kind, text: notes.append((kind, text)),
+        config=session.SessionConfig(auto_accept_undo=accept),
+    )
+    session_obj._conn = _SessionConn(_playing_room(position=my_position, game_time=8_000))
+    session_obj._view = request
+    session_obj._view_key = (3, 8_000, 1)
+    session_obj._room_state = 1
+
+    async def run():
+        session_obj._handle_undo_request(request)
+        await asyncio.sleep(0.6)
+
+    asyncio.run(run())
+    assert session_obj._conn.sent, f"no undo response sent (notes={notes})"
+    _version, data = session_obj._conn.sent[-1]
+    return game.decode_game_data(data), notes
+
+
+def test_undo_request_accepted_automatically():
+    decoded, notes = _run_undo(True, my_position=2)  # bot is black; white requested
+    assert decoded.state == game.STATE_WAIT_WHITE
+    assert len(decoded.records) == 0
+    assert notes and notes[0][0] == session.NOTIFY_UNDO
+    assert "自动同意" in notes[0][1]
+
+
+def test_undo_request_rejected_when_configured():
+    decoded, notes = _run_undo(False, my_position=2)
+    assert decoded.state == game.STATE_WAIT_BLACK
+    assert len(decoded.records) == 1
+    assert notes and "自动拒绝" in notes[0][1]
+
+
+def test_game_over_message_names_the_bot_not_you():
+    view = game.initial_view()
+    finished = game.View(
+        white_id=view.white_id,
+        state=game.STATE_BLACK_WIN,
+        pieces=list(view.pieces),
+        records=list(view.records),
+    )
+    notes = []
+    session_obj = session.RoomSession("abc123", lambda kind, text: notes.append((kind, text)))
+    session_obj._conn = _SessionConn(_playing_room(position=2, game_version=5, game_time=8_000))
+    session_obj._view = finished
+    session_obj._view_key = (5, 8_000, 1)
+    session_obj._room_state = 1
+    session_obj._handle_game_update()
+    game_over = [text for kind, text in notes if kind == session.NOTIFY_GAME_OVER]
+    assert game_over == ["黑方获胜，机器人获胜 🎉"]

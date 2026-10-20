@@ -35,6 +35,7 @@ NOTIFY_ERROR = "error"
 NOTIFY_CLOSED = "closed"
 NOTIFY_ROOM_CREATED = "room_created"
 NOTIFY_OPPONENT_JOINED = "opponent_joined"
+NOTIFY_UNDO = "undo_request"
 
 DEFAULT_EMOJI = "😀"
 PROMOTION_LETTERS = {
@@ -63,6 +64,8 @@ class SessionConfig:
     auto_start: bool = True
     move_delay: float = 0.8
     emoji: str = DEFAULT_EMOJI
+    #: Accept an opponent's undo request automatically (False = auto reject).
+    auto_accept_undo: bool = True
 
 
 @dataclass
@@ -104,6 +107,8 @@ class RoomSession:
         self._ai_task: asyncio.Task | None = None
         self._auto_start_task: asyncio.Task | None = None
         self._reconnect_task: asyncio.Task | None = None
+        self._undo_task: asyncio.Task | None = None
+        self._last_undo_key: tuple[int, int, int] | None = None
         self._closed = False
         self._closing = False
         self._game_over_notified = False
@@ -325,7 +330,7 @@ class RoomSession:
             return
         self._closing = True
         self._closed = True
-        for task in (self._ai_task, self._auto_start_task, self._reconnect_task):
+        for task in (self._ai_task, self._auto_start_task, self._reconnect_task, self._undo_task):
             if task is not None and not task.done():
                 task.cancel()
         self.last_leave_message = ""
@@ -365,11 +370,15 @@ class RoomSession:
             self._view = None
             self._view_key = None
             self._pending_move_version = None
+            self._last_undo_key = None
+            if self._undo_task is not None and not self._undo_task.done():
+                self._undo_task.cancel()
             self._notify(NOTIFY_INFO, "对局已结束，房间回到等待状态")
         elif self._room_state == 0 and room.state == 1:
             # A new game started: never inherit the previous game's state.
             self._game_over_notified = False
             self._last_auto_turn_key = None
+            self._last_undo_key = None
         self._room_state = room.state
 
         if ended_game:
@@ -486,6 +495,10 @@ class RoomSession:
             self._notified_start = True
             self._notify(NOTIFY_STARTED, f"对局开始，你执{'白' if self.my_color == 'white' else '黑'}方")
             self._notify(NOTIFY_BOARD, "")
+        if view.state in (game.STATE_WHITE_REQ_BACK, game.STATE_BLACK_REQ_BACK):
+            self._handle_undo_request(view)
+            return
+        self._last_undo_key = None
         if game.is_finished(view):
             # A finished position is not a turn: drop any scheduled AI move.
             self._last_auto_turn_key = None
@@ -493,15 +506,16 @@ class RoomSession:
                 self._ai_task.cancel()
             if not self._game_over_notified:
                 self._game_over_notified = True
-                if view.state == game.STATE_WHITE_WIN:
-                    result = "白方获胜"
-                else:
-                    result = "黑方获胜"
+                white_won = view.state == game.STATE_WHITE_WIN
+                winner = "白方" if white_won else "黑方"
                 mine = self.my_color
                 if mine == "white":
-                    result += "，你赢了 🎉" if view.state == game.STATE_WHITE_WIN else "，你输了"
+                    outcome = "机器人获胜 🎉" if white_won else "机器人落败"
                 elif mine == "black":
-                    result += "，你赢了 🎉" if view.state == game.STATE_BLACK_WIN else "，你输了"
+                    outcome = "机器人落败" if white_won else "机器人获胜 🎉"
+                else:
+                    outcome = ""
+                result = f"{winner}获胜" + (f"，{outcome}" if outcome else "")
                 self._notify(NOTIFY_GAME_OVER, result)
         elif self.is_my_turn:
             if self.config.ai_enabled:
@@ -560,7 +574,8 @@ class RoomSession:
         seated = sum(1 for player in self.room.player_list if player.occupied)
         if seated < 2:
             return False, "需要两名玩家入座后才能开始"
-        data = game.encode_game_data(game.initial_view(white_id=0))
+        enable_ct = bool(self._view.enable_ct) if self._view is not None else False
+        data = game.encode_game_data(game.initial_view(white_id=0, enable_ct=enable_ct))
         ok = await self._conn.start_game(data, shuffle=shuffle)  # type: ignore[union-attr]
         if not ok:
             return False, "开始游戏的消息发送失败"
@@ -596,6 +611,9 @@ class RoomSession:
         new_view, error = game.apply_move(view, piece.id, after, promotion_type)
         if new_view is None or error:
             return False, f"这步棋不能走：{error or '非法走法'}"
+        # Accumulate the elapsed time into the mover's cost, like the site does
+        # (its ``gO`` call before encoding).  Without this the clock resets.
+        new_view = game.advance_clock(new_view, self.room.game_time)
         data = game.encode_game_data(new_view)
         version = self.room.game_version
         self._pending_move_version = version
@@ -676,9 +694,22 @@ class RoomSession:
         if game.is_finished(view):
             return False, "对局已经结束"
         new_state = game.STATE_BLACK_WIN if self.my_color == "white" else game.STATE_WHITE_WIN
+        finished = game.View(
+            white_id=view.white_id,
+            state=new_state,
+            pieces=list(view.pieces),
+            records=list(view.records),
+            back_piece_id=view.back_piece_id,
+            back_piece_before=view.back_piece_before,
+            enable_ct=view.enable_ct,
+            costs=list(view.costs),
+            pt=view.pt,
+            pt_owner=view.pt_owner,
+        )
+        finished = game.advance_clock(finished, self.room.game_time)
         # Encode with the real position's turn and only patch the winner state:
         # flipping the state can invert the side to move implied by the records.
-        data = game.encode_game_data(view, state_override=new_state)
+        data = game.encode_game_data(finished, state_override=new_state)
         version = self.room.game_version
         ok = await self._conn.update_game_data(version, data)  # type: ignore[union-attr]
         if not ok:
@@ -698,7 +729,20 @@ class RoomSession:
         if game.legal_moves(view):
             return False, "对手仍有合法走法，不能宣布胜利"
         new_state = game.STATE_WHITE_WIN if self.my_color == "white" else game.STATE_BLACK_WIN
-        data = game.encode_game_data(view, state_override=new_state)
+        finished = game.View(
+            white_id=view.white_id,
+            state=new_state,
+            pieces=list(view.pieces),
+            records=list(view.records),
+            back_piece_id=view.back_piece_id,
+            back_piece_before=view.back_piece_before,
+            enable_ct=view.enable_ct,
+            costs=list(view.costs),
+            pt=view.pt,
+            pt_owner=view.pt_owner,
+        )
+        finished = game.advance_clock(finished, self.room.game_time)
+        data = game.encode_game_data(finished, state_override=new_state)
         ok = await self._conn.update_game_data(self.room.game_version, data)  # type: ignore[union-attr]
         if not ok:
             return False, "发送宣布胜利消息失败"
@@ -717,6 +761,10 @@ class RoomSession:
             records=list(view.records),
             back_piece_id=view.back_piece_id,
             back_piece_before=view.back_piece_before,
+            enable_ct=view.enable_ct,
+            costs=list(view.costs),
+            pt=view.pt,
+            pt_owner=None,
         )
         self._handle_game_update()
 
@@ -727,13 +775,72 @@ class RoomSession:
             return False, "对局尚未结束，不能重开"
         if self.my_color is None:
             return False, "观战者无法重开对局"
-        data = game.encode_game_data(game.initial_view(white_id=self.my_index))
+        fresh = game.initial_view(white_id=self.my_index, enable_ct=bool(view.enable_ct))
+        fresh = game.advance_clock(fresh, self.room.game_time)
+        data = game.encode_game_data(fresh)
         ok = await self._conn.update_game_data(self.room.game_version, data)  # type: ignore[union-attr]
         if not ok:
             return False, "发送重开消息失败"
         self._game_over_notified = False
         self._notified_start = False
         return True, "已重开对局（你执白）"
+
+    # --------------------------------------------------------------- undo
+
+    def _handle_undo_request(self, view: game.View) -> None:
+        """React to an undo request sent by the opponent (issue: bot ignored it)."""
+        if self.my_color is None:
+            return
+        if view.state == game.STATE_WHITE_REQ_BACK:
+            requester = view.white_id
+        elif view.state == game.STATE_BLACK_REQ_BACK:
+            requester = 1 - view.white_id
+        else:
+            return
+        if requester == self.my_index:
+            return  # our own request; nothing to answer here
+        key = (view.state, self.room.game_version, len(view.records))
+        if key == self._last_undo_key:
+            return
+        self._last_undo_key = key
+        accept = bool(self.config.auto_accept_undo)
+        action = "同意" if accept else "拒绝"
+        self._notify(NOTIFY_UNDO, f"对手请求悔棋，机器人将自动{action}")
+        if self._undo_task is not None and not self._undo_task.done():
+            self._undo_task.cancel()
+        self._undo_task = asyncio.create_task(
+            self._respond_undo(view, accept), name=f"gjxq-undo-{self.room_id}"
+        )
+
+    async def _respond_undo(self, view: game.View, accept: bool) -> None:
+        """Publish the accept/reject snapshot for a pending undo request."""
+        await asyncio.sleep(0.3)
+        current = self._view
+        if self._closed or current is None or self.room.state != 1:
+            return
+        if current.state != view.state or len(current.records) != len(view.records):
+            return  # the request is already resolved
+        action = "同意" if accept else "拒绝"
+        if accept:
+            publish = game.undo_last(view)
+            if publish is None:
+                publish = game.reject_undo(view)
+                action = "拒绝"
+        else:
+            publish = game.reject_undo(view)
+        if publish is None:
+            return
+        publish = game.advance_clock(publish, self.room.game_time)
+        data = game.encode_game_data(publish)
+        version = self.room.game_version
+        ok = await self._conn.update_game_data(version, data)  # type: ignore[union-attr]
+        if not ok:
+            self._notify(NOTIFY_ERROR, "处理悔棋请求失败，请稍后再试")
+            return
+        with contextlib.suppress(asyncio.TimeoutError):
+            await self._wait_for(lambda: self.room.game_version != version, timeout=4.0)
+        self._last_undo_key = None
+        self.logger.info("已自动%s对手的悔棋请求", action)
 
     # -------------------------------------------------------------- auto play
 

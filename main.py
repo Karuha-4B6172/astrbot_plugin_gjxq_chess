@@ -57,6 +57,7 @@ try:  # AstrBot imports this file as ``data.plugins.<plugin_dir>.main``.
         NOTIFY_MOVED,
         NOTIFY_OPPONENT_MOVED,
         NOTIFY_STARTED,
+        NOTIFY_UNDO,
         NOTIFY_YOUR_TURN,
         RoomManager,
         RoomSession,
@@ -74,6 +75,7 @@ except ImportError:  # pragma: no cover - top-level loading (tests / flattened l
         NOTIFY_MOVED,
         NOTIFY_OPPONENT_MOVED,
         NOTIFY_STARTED,
+        NOTIFY_UNDO,
         NOTIFY_YOUR_TURN,
         RoomManager,
         RoomSession,
@@ -81,7 +83,7 @@ except ImportError:  # pragma: no cover - top-level loading (tests / flattened l
     )
 
 PLUGIN_NAME = "astrbot_plugin_gjxq_chess"
-PLUGIN_VERSION = "1.4.0"
+PLUGIN_VERSION = "1.5.0"
 
 ROOM_URL_TEMPLATE = "https://game.hullqin.cn/gjxq/{room_id}"
 ROOM_ID_PATTERN = re.compile(r"^[a-z0-9]{3,8}$")
@@ -110,7 +112,8 @@ HELP_TEXT = """国际象棋联机插件 v{version}
 提示：走法使用“起点+终点”格式且不带空格；双方都入座后才能开始对局。
 默认不主动推送棋盘（可在配置中开启，并按 board_batch_plies 合并推送）。
 AI 难度可用 /象棋 难度 1000 调整（600/800/1000/1200/1500/1800/2000/2400）。
-离开房间会自动先离座（对局中且机器人为房主时会先结束对局，和网页的“结束游戏”一致）。""".format(
+离开房间会自动先离座（对局中且机器人为房主时会先结束对局，和网页的“结束游戏”一致）。
+对手请求悔棋时机器人会自动回应（默认同意，可用 auto_accept_undo 配置）。""".format(
     version=PLUGIN_VERSION
 )
 
@@ -235,6 +238,7 @@ class GjxqChessPlugin(Star):
             auto_start=self._conf_bool("auto_start", True),
             move_delay=self._conf_float("move_delay", 0.8, minimum=0.0),
             emoji=self._conf_str("emoji", "😀") or "😀",
+            auto_accept_undo=self._conf_bool("auto_accept_undo", True),
         )
 
     def _max_sessions(self) -> int:
@@ -324,6 +328,12 @@ class GjxqChessPlugin(Star):
             if kind == NOTIFY_BOARD:
                 if self._board_push_enabled():
                     self._schedule_push(self._push_text(umo, self._board_text(session)))
+                return
+            if kind == NOTIFY_UNDO:
+                body = f"↩️ {self._room_tag(umo, session)}{text}"
+                if self._board_push_enabled():
+                    body += "\n" + self._board_text(session)
+                self._schedule_push(self._push_text(umo, body))
                 return
             if kind == NOTIFY_STARTED:
                 if text:

@@ -23,6 +23,12 @@
     "hint": "单步思考的最长秒数，超时后返回当前最优走法（默认 2.0）。Elo 模式会给出档位时间，并在超过该值时以此为上界。",
     "default": 2.0
   },
+  "auto_accept_undo": {
+    "description": "自动同意悔棋",
+    "type": "bool",
+    "hint": "对手在网页请求悔棋时，机器人是否自动同意；关闭则自动拒绝。默认开启。",
+    "default": true
+  },
   "auto_start": {
     "description": "自动开始对局",
     "type": "bool",

@@ -1,6 +1,6 @@
 # 国际象棋联机（astrbot_plugin_gjxq_chess）
 
-![version](https://img.shields.io/badge/version-v1.4.0-blue)
+![version](https://img.shields.io/badge/version-v1.5.0-blue)
 ![python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
@@ -11,7 +11,7 @@
 >
 > 本插件是非官方第三方工具，与 hullqin 及其游戏站点无隶属关系。
 >
-> 当前版本：v1.4.0（更新内容见 [CHANGELOG.md](CHANGELOG.md)）。
+> 当前版本：v1.5.0（更新内容见 [CHANGELOG.md](CHANGELOG.md)）。
 >
 > 仓库：https://github.com/Karuha-4B6172/astrbot_plugin_gjxq_chess
 
@@ -21,6 +21,8 @@
 - **文本棋盘**：Unicode 棋子 + 文件/行号坐标，按玩家执棋方向翻转，并标注最后一步。
 - **聊天走棋**：`e2e4`、`g1f3`、升变 `e7e8q`，非法走法会给出中文提示。
 - **自动 AI + Elo 难度**：基于 python-chess 的 alpha-beta 搜索；可用近似 Elo 分（600-2400）设置难度，也可用 `/象棋 难度` 在聊天里随时调整；关闭 Elo 时按深度/思考时间自定义。
+- **计时模式**：网站开启“操作计时”后，机器人走棋会按站点规则正确累计用时，不会让计时归零。
+- **悔棋回应**：对手在网页请求悔棋时，机器人会自动同意（默认）或拒绝（可配置 `auto_accept_undo`）。
 - **主动通知（默认关闭棋盘推送）**：对手/AI 走棋、轮到你走棋、胜负结果可主动推送；棋盘默认不推送，可用配置开启，并按 `board_batch_plies` 合并多步后一次发送，避免刷屏。
 - **多开**：同一个群/私聊可同时开多个房间（`/象棋 列表` 查看、`/象棋 切换` 切换、`/象棋 离开 [房间号]` 单独离开），并发房间总数可配置（默认 5）。
 - **自动入座 / 自动开局**：机器人自动占座，房主场景下双方入座后自动开始；
@@ -103,6 +105,7 @@
 | 配置项 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `ai_enabled` | bool | `true` | 是否自动 AI 走棋 |
+| `auto_accept_undo` | bool | `true` | 对手请求悔棋时自动同意；`false` 时自动拒绝 |
 | `ai_elo` | int | `0` | 近似 Elo 难度（600-2400）；0 = 关闭，改用 `ai_depth` / `ai_time_limit` |
 | `ai_depth` | int | `3` | 自定义模式的搜索深度（1-6，越大越慢越强；仅 `ai_elo=0` 时生效） |
 | `ai_time_limit` | float | `2.0` | 单步思考时间上限（秒）；Elo 模式下作为时间上界 |
@@ -149,7 +152,6 @@ python -m pytest tests -q
 - `tests/test_session.py`：房间会话状态机（离座/入座、结束游戏后重开、AI 调度回归）。
 - `tests/test_render.py`：文本棋盘/走棋列表渲染。
 - `tests/test_ai.py`：AI 走法合法性、一步杀、Elo 档位。
-- GitHub Actions 会在 Python 3.10 / 3.11 / 3.12 上运行全部测试（`.github/workflows/tests.yml`）。
 
 ## 发布到 AstrBot 插件市场
 
@@ -187,7 +189,6 @@ astrbot_plugin_gjxq_chess/
   LICENSE
   logo.png           # 插件图标
   .gitignore / .gitattributes
-  .github/workflows/tests.yml # CI
   tests/             # 离线单元测试与黄金用例
   chess_site/        # 协议、棋局编解码、房间会话、AI 与文本渲染
 ```

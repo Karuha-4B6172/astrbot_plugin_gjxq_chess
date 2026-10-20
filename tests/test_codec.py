@@ -102,3 +102,67 @@ def test_fen_is_valid_for_python_chess():
         fen = game.view_to_fen(view)
         if fen:
             chess.Board(fen)  # raises when the FEN is invalid
+
+
+def test_clock_advance_and_roundtrip():
+    view = game.initial_view(enable_ct=True)
+    assert view.enable_ct is True
+    assert view.pt == 0 and view.pt_owner is None
+
+    new_view, error = game.apply_move(view, 11, game.square_to_pos("e4"))
+    assert error is None and new_view is not None
+    # First move: no previous clock owner, the clock is handed to black.
+    clocked = game.advance_clock(new_view, 12_345)
+    assert clocked.pt == 12
+    assert clocked.pt_owner == 1
+    assert clocked.costs == [0, 0]
+
+    legal = game.legal_moves(clocked)
+    assert legal is not None
+    piece_id = next(iter(legal))
+    reply, error = game.apply_move(clocked, piece_id, legal[piece_id][0])
+    assert error is None and reply is not None
+    # Previous owner (black) gets the 8 s elapsed since pt; clock goes to white.
+    reply = game.advance_clock(reply, 20_000)
+    assert reply.pt == 20
+    assert reply.pt_owner == 0
+    assert reply.costs[1] == 8
+
+    decoded = game.decode_game_data(game.encode_game_data(reply))
+    assert decoded.enable_ct is True
+    assert decoded.costs == reply.costs
+    assert decoded.pt == reply.pt
+    assert decoded.pt_owner == reply.pt_owner
+
+    # Games without the clock are returned unchanged.
+    plain = game.initial_view()
+    assert game.advance_clock(plain, 99_999) is plain
+
+
+def test_undo_last_and_reject_helpers():
+    view = game.initial_view(enable_ct=True)
+    first, error = game.apply_move(view, 11, game.square_to_pos("e4"))
+    assert error is None and first is not None
+    legal = game.legal_moves(first)
+    assert legal is not None
+    piece_id = next(iter(legal))
+    second, error = game.apply_move(first, piece_id, legal[piece_id][0])
+    assert error is None and second is not None
+
+    undone = game.undo_last(second)
+    assert undone is not None
+    assert undone.state == game.STATE_WAIT_BLACK
+    assert len(undone.records) == 1
+    assert undone.back_piece_id == second.records[0].id
+    assert undone.pieces[piece_id].pos == first.pieces[piece_id].pos
+
+    request = game.View(
+        white_id=second.white_id,
+        state=game.STATE_WHITE_REQ_BACK,
+        pieces=list(second.pieces),
+        records=list(second.records),
+    )
+    rejected = game.reject_undo(request)
+    assert rejected is not None and rejected.state == game.STATE_WAIT_BLACK
+    assert game.reject_undo(second) is None  # not a request
+    assert game.undo_last(game.initial_view()) is None
